@@ -51,7 +51,7 @@ import tf
 import moveit_commander
 import moveit_msgs.msg
 import sys
-
+import rospkg
 
 from geometry_msgs.msg import PoseStamped, Point, Quaternion
 from gcode_processor.gcode_interpreter import *
@@ -68,8 +68,9 @@ class DrawGCode:
 
 	def maintain_orientation(self):
 		position = Point()
-		roll = 3.14159/2
-		yaw = 3.14159/2
+		roll = 3.14159
+		yaw = 0
+                #yaw = 3.14159/2
 		pitch = 0
 
 		ps = PoseStamped()
@@ -104,13 +105,9 @@ class DrawGCode:
 
 		print "============ Reference frame: %s" % group.get_planning_frame()
 		print "============ Reference frame: %s" % group.get_end_effector_link()
-		print "============ Robot Groups:"
-		print robot.get_group_names()
-		print "============ Printing robot state"
-		print robot.get_current_state()
-		print "============"
 
 
+                # GO TO a non-singularity position
 		joint_goal = group.get_current_joint_values()
 		joint_goal[0] = 0
 		joint_goal[1] = -3.1415/4
@@ -122,6 +119,8 @@ class DrawGCode:
 		group.go(joint_goal, wait=True)
 		group.stop()
 
+                first_z = True
+                first_z_pos = 0.05
 
                 res = 0
                 while not rospy.is_shutdown() and res is not -1:
@@ -143,21 +142,28 @@ class DrawGCode:
                             gcode_pose.y = cur_rob_pose.position.y
 
                         if res.z != "":
+                            first_z = False
                             gcode_pose.z = float(res.z)
 
+                        if first_z:
+                            gcode_pose.z = first_z_pos
 
                         pub_pose = PoseStamped()
                         pub_pose.header.frame_id = "base_link"
-                        #pub_pose.pose.orientation = self.maintain_orientation()
+
+                        # NOTE: the orientation set by this method is correct for the 'ee_link'
+                        # if MoveIt is configured to use link_6's coordinate system, planning will fail here
+                        # in which case commenting this line out is the solution
+                        pub_pose.pose.orientation = self.maintain_orientation()
                         pub_pose.pose.position = gcode_pose
 
 
-                        rospy.sleep(1)
+                        #rospy.sleep(1)
                         target_pose_publisher.publish(pub_pose)
                         target_pose_publisher.publish(pub_pose)
                         target_pose_publisher.publish(pub_pose)
                         target_pose_publisher.publish(pub_pose)
-                        rospy.sleep(1)
+                        #rospy.sleep(1)
                         group.set_pose_target(pub_pose)
                         plan1 = group.plan()
                         plan = group.go(wait=True)
@@ -166,7 +172,12 @@ class DrawGCode:
 
 if __name__=='__main__':
 	rospy.init_node('draw_gcode_node', anonymous=True)
-	dgc = DrawGCode("/home/maxwell/catkin_ws/src/raapps/gcode_processor/gcode/revel_gcode_test_line_left.nc")
+	rospack = rospkg.RosPack()
+        pkg_path = rospack.get_path('gcode_processor')
+        desired_file = "revel_cube_contour.nc"
+
+        full_path = pkg_path + "/gcode/" + desired_file
+        dgc = DrawGCode(full_path)
         dgc.moveit_example()
 
 
