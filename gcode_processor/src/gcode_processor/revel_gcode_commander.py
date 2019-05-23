@@ -79,7 +79,7 @@ class XYZTuple:
         return self.z
 
 
-class DrawGCode:
+class RevelGCodeCommander:
 
 	def __init__(self, filename):
 		self.gci = GCodeInterpreter(filename)
@@ -199,22 +199,23 @@ class DrawGCode:
 
         """
         this uses MoveIt for Inverse Kinematic Computation, but does not use it for path planning
-        so while this may potentially collide with the environment, while drawing, it will allow
+        so while this may potentially collide with the environment, while executing, it will allow
         for smoother, faster point-to-point trajectories
 
         Visualization information is published on /target_pose and /drawing/gcode_path topics
 
         Note that the x,y, and z offset values should be in METERS regardless of the unit type used in the gcode file
         """
-        def direct_control_example(self, x_offset, y_offset, z_offset, simulation:=False):
+        def execute_gcode(self, x_offset, y_offset, z_offset, simulation=False):
                 moveit_commander.roscpp_initialize(sys.argv)
                 robot = moveit_commander.RobotCommander()
 		scene = moveit_commander.PlanningSceneInterface()
 		group = moveit_commander.MoveGroupCommander("svenzva_arm")
 		path_pose_publisher = rospy.Publisher("/drawing/gcode_path",PolygonStamped, queue_size=2)
 		target_pose_publisher = rospy.Publisher("/target_pose",PoseStamped, queue_size=2)
-                action_client = actionlib.SimpleActionClient('revel/follow_joint_trajectory', control_msgs.msg.FollowJointTrajectoryAction)
-                action_client.wait_for_server()
+                if not simulation:
+                    action_client = actionlib.SimpleActionClient('revel/follow_joint_trajectory', control_msgs.msg.FollowJointTrajectoryAction)
+                    action_client.wait_for_server()
 
 
                 rospy.wait_for_service('compute_ik')
@@ -248,97 +249,99 @@ class DrawGCode:
                     i+=1
 
 
-                    if True:
-                        gcode_pose = last_point
+                    gcode_pose = last_point
 
-                        if res.x != "":
-                            gcode_pose.x = float(res.x + x_offset)
+                    if res.x != "":
+                        gcode_pose.x = float(res.x + x_offset)
 
-                        if res.y != "":
-                            gcode_pose.y = float(res.y + y_offset)
+                    if res.y != "":
+                        gcode_pose.y = float(res.y + y_offset)
 
-                        if res.z != "":
-                            first_z = False
-                            z_delta = abs(gcode_pose.z - res.z - z_offset)
-                            print z_delta
+                    if res.z != "":
+                        first_z = False
+                        z_delta = abs(gcode_pose.z - res.z - z_offset)
+                        print z_delta
 
-                            gcode_pose.z = float(res.z+z_offset)
+                        gcode_pose.z = float(res.z+z_offset)
 
-                        if first_z:
-                            gcode_pose.z = first_z_pos
+                    if first_z:
+                        gcode_pose.z = first_z_pos
 
-                        poly_point = Point32()
-                        poly_point.x = gcode_pose.x
-                        poly_point.y = gcode_pose.y
-                        poly_point.z = gcode_pose.z
+                    #begin display publishing
+                    poly_point = Point32()
+                    poly_point.x = gcode_pose.x
+                    poly_point.y = gcode_pose.y
+                    poly_point.z = gcode_pose.z
 
-                        poly_msg.points.append(poly_point)
+                    poly_msg.points.append(poly_point)
 
-                        last_point = gcode_pose
-                        pub_pose = PoseStamped()
-                        pub_pose.header.frame_id = "base_link"
+                    last_point = gcode_pose
+                    pub_pose = PoseStamped()
+                    pub_pose.header.frame_id = "base_link"
 
-                        pub_pose.pose.orientation = self.maintain_orientation()
-                        pub_pose.pose.position = gcode_pose
-
-
-                        path_pose_publisher.publish(poly_stmp_msg)
-                        path_pose_publisher.publish(poly_stmp_msg)
-
-                        target_pose_publisher.publish(pub_pose)
-                        target_pose_publisher.publish(pub_pose)
+                    pub_pose.pose.orientation = self.maintain_orientation()
+                    pub_pose.pose.position = gcode_pose
 
 
-                        if len(ik_req.pose_stamped_vector) > 0:
-                            ik_req.pose_stamped_vector.pop()
-                        ik_req.pose_stamped_vector.append(pub_pose)
-                        try:
-                            resp = compute_ik(ik_req)
-                            pos= resp.solution.joint_state.position
-                            goal = SvenzvaJointGoal()
-                            goal.positions = resp.solution.joint_state.position
+                    path_pose_publisher.publish(poly_stmp_msg)
+                    path_pose_publisher.publish(poly_stmp_msg)
+
+                    target_pose_publisher.publish(pub_pose)
+                    target_pose_publisher.publish(pub_pose)
+                    #end display publishing
+
+                    if len(ik_req.pose_stamped_vector) > 0:
+                        ik_req.pose_stamped_vector.pop()
+
+                    ik_req.pose_stamped_vector.append(pub_pose)
+
+                    try:
+                        resp = compute_ik(ik_req)
+                        pos= resp.solution.joint_state.position
+                        goal = SvenzvaJointGoal()
+                        goal.positions = resp.solution.joint_state.position
 
 
-                            goal = FollowJointTrajectoryGoal()
-			    goal.trajectory.joint_names = ['joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6']
-			    point = JointTrajectoryPoint()
-			    point.positions = resp.solution.joint_state.position
-			    #Since this is asynchronous, the time from 2 points is 0 and the action will  return immediately
-			    point.time_from_start = rospy.Duration(0.1)
-			    goal.trajectory.points.append(point)
+                        goal = FollowJointTrajectoryGoal()
+                        goal.trajectory.joint_names = ['joint_1', 'joint_2', 'joint_3', 'joint_4', 'joint_5', 'joint_6']
+                        point = JointTrajectoryPoint()
+                        point.positions = resp.solution.joint_state.position
+                        #Since this is asynchronous, the time from 2 points is 0 and the action will  return immediately
+                        point.time_from_start = rospy.Duration(0.1)
+                        goal.trajectory.points.append(point)
 
-                            if not simulation:
-                                action_client.send_goal(goal)
+                        if not simulation:
+                            action_client.send_goal(goal)
 
 
-                            # For Z-positional movements about this value, reduce the delta_pos controller parameter
-                            # this sets the z_stall_condition flag which forces the robot to move to its commanded Z height
-                            # fully before continuing to other points
-                            if z_delta > 0.002:
-                                z_stall_condition = True
-                                self.delta_pos = 0.065
+                        # For Z-positional movements about this value, reduce the delta_pos controller parameter
+                        # this sets the z_stall_condition flag which forces the robot to move to its commanded Z height
+                        # fully before continuing to other points
+                        if z_delta > 0.002:
+                            z_stall_condition = True
+                            self.delta_pos = 0.065
 
-                            if simulation:
-                                rospy.sleep(0.1)
-                            else:
-                                self.wait_for_stall(resp.solution.joint_state.position)
+                        if simulation:
+                            rospy.sleep(0.1)
+                        else:
+                            self.wait_for_stall(resp.solution.joint_state.position)
 
-                            if z_stall_condition:
-                                self.delta_pos = delta_copy
-                                rospy.sleep(1.0)
+                        if z_stall_condition:
+                            self.delta_pos = delta_copy
+                            rospy.sleep(1.0)
 
-			except rospy.ServiceException, e:
-                            rospy.loginfo("Service call failed: %s"%e)
-                            return
+                    except rospy.ServiceException, e:
+                        rospy.loginfo("Service call failed: %s"%e)
+                        return
 
 
 if __name__=='__main__':
-	rospy.init_node('draw_gcode_node', anonymous=True)
+        rospy.init_node('revel_gcode_commander', anonymous=True)
 	rospack = rospkg.RosPack()
         pkg_path = rospack.get_path('gcode_processor')
         desired_file = "square_flower.nc"
         full_path = pkg_path + "/gcode/" + desired_file
-        dgc = DrawGCode(full_path)
-        dgc.direct_control_example(0, 0.3, -0.003)
+        dgc = RevelGCodeCommander(full_path)
+        dgc.execute_gcode(0, 0.3, -0.003)
 
 
