@@ -1,0 +1,10 @@
+<launch>
+
+    <arg name="simulation" default="False"/>
+    
+    <node name="drawing" type="draw.py" pkg="gcode_processor" output="screen">
+        <param name="simulation" value="$(arg simulation)"/>
+    </node>
+
+
+</launch>
