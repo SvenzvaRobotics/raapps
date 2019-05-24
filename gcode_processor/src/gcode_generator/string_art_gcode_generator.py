@@ -69,16 +69,35 @@ Author: Ryan Menz, Maxwell Svetlik
 
 import math
 import sys
+import csv
 
 
 class GenerateStringArtGCode():
 
-    def __init__(self, n=8, hoop_rad=3, bolt_rad=1):
+    def __init__(self, n=8, hoop_rad=3, bolt_rad=1, z_compensation=False):
 
 	self.n=8 #warning code only works for even nums
 	self.hoop_rad=3 #radius of hoop in inches
 	self.bolt_rad=1 #effective diameter of bolt head
 	self.lists = [1,4,7,2,5,8,3,6,1,3,5,7,2,4,6,8,2,666] #lists of points, first value is 1, last value not used
+
+        #parameters for z_compensation, if used
+        self.z_comp_step_size = 0.005
+        self.z_compensation=z_compensation
+
+    def read_input_file(self):
+	with open(sys.argv[1]) as csv_file:
+	    csv_reader = csv.reader(csv_file, delimiter=',')
+	    line_count = 0
+	    self.lists = []
+	    for row in csv_reader:
+		for item in row:
+		    try:
+			self.lists.append(int(item))
+		    except:
+			print "Input file contained non-integer value. Exiting."
+			exit()
+
 
     def angle(self, num):#far right peg is 0 degrees, top peg is 90 degrees, far left is 180, bottom is 270
         return (num-1)*360.0/self.n
@@ -108,33 +127,43 @@ class GenerateStringArtGCode():
         return .7071067812*self.bolt_rad**round(math.sin(math.radians(self.angle(num)-45)),2)
 
     def generate(self):
+        if len(sys.argv) < 3:
+            print "Not enough arguments. Usage: ./string_art_gcode_generatory.py input_file_path.csv output_file_path.nc"
+            exit()
+
+        #read input file, stuff vector
+        self.read_input_file()
+
         #output file
-        #try:
-        file = open(str(sys.argv[2]),'w')#change location for your machine
+        try:
+            file = open(str(sys.argv[2]),'w')#change location for your machine
 
-        file.write('G20 G90 G17') #G20 - inches, G90 - absolute positioning, G17 - arcs are made in xy plane
-        file.write('G0 X0 Y0 Z0.5\n')
-        file.write('Z0.1\n')
-        file.write('Z0.0\n')
-        file.write('\n')
-        #print "M66"  #pauses - tie string here
-
-        for i in range(0,len(self.lists)-1):#takes points and lists and produces gcode to go to approach points and waypoints around the peg
-            file.write('(%s' %self.lists[i] + ')\n')
-            file.write('G0 X%s'  %str(self.xcor(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])))
-            file.write('G0 X%s'  %str(self.xcor(self.lists[i])+self.xcoor1(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])+self.ycoor1(self.lists[i])))
-            file.write('G0 X%s'  %str(self.xcor(self.lists[i])+self.xcoor2(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])+self.ycoor2(self.lists[i])))
-            file.write('G0 X%s'  %str(self.xcor(self.lists[i])+self.xcoor3(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])+self.ycoor3(self.lists[i])))
-            file.write('G0 X%s'  %str(self.xcor(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])))
+            file.write('G20 G90 G17') #G20 - inches, G90 - absolute positioning, G17 - arcs are made in xy plane
+            file.write('G0 X0 Y0 Z0.5\n')
+            file.write('Z0.1\n')
+            file.write('Z0.0\n')
             file.write('\n')
+            #print "M66"  #pauses - tie string here
 
-        file.write('X0 Y0 Z0.1\n')
-        file.write('Z0.5\n')
-        file.close()
-        #except:
-        #    print "Error writing to specified output file path. Is it valid?"
+            for i in range(0,len(self.lists)-1):#takes points and lists and produces gcode to go to approach points and waypoints around the peg
+                file.write('(%s' %self.lists[i] + ')\n')
+                if self.z_compensation:
+                    file.write('G0 X%s'  %str(self.xcor(self.lists[i])) + ' Y%s' %str(self.ycor(self.lists[i])) + ' Z%s\n' %str(self.z_comp_step_size*i))
+                else:
+                    file.write('G0 X%s'  %str(self.xcor(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])))
+                file.write('G0 X%s'  %str(self.xcor(self.lists[i])+self.xcoor1(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])+self.ycoor1(self.lists[i])))
+                file.write('G0 X%s'  %str(self.xcor(self.lists[i])+self.xcoor2(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])+self.ycoor2(self.lists[i])))
+                file.write('G0 X%s'  %str(self.xcor(self.lists[i])+self.xcoor3(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])+self.ycoor3(self.lists[i])))
+                file.write('G0 X%s'  %str(self.xcor(self.lists[i])) + ' Y%s\n' %str(self.ycor(self.lists[i])))
+                file.write('\n')
+
+            file.write('X0 Y0 Z0.5\n')
+            file.write('Z1.0\n')
+            file.close()
+        except:
+            print "Error writing to specified output file path. Is it valid?"
 
 if __name__=='__main__':
-    gsagc = GenerateStringArtGCode()
+    gsagc = GenerateStringArtGCode(z_compensation=True)
     gsagc.generate()
 
