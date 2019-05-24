@@ -48,6 +48,9 @@ if __name__=='__main__':
         pkg_path = rospack.get_path('gcode_processor')
         desired_file = "square_flower.nc"
         full_path = pkg_path + "/gcode/" + desired_file
+
+        is_sim = rospy.get_param('~simulation', False)
+
         dgc = RevelGCodeCommander(full_path)
-        dgc.execute_gcode(0, 0.3, -0.003)
+        dgc.execute_gcode(0, 0.3, -0.003, simulation:=is_sim)
 
